@@ -44,6 +44,47 @@ make build           # ./bin/release-proxy
 make docker-build    # release-proxy:latest image
 ```
 
+## Docker
+
+Multi-arch images (`linux/amd64`, `linux/arm64`) are published to GitHub Container
+Registry. The image is built from a `distroless/static:nonroot` base and runs as an
+unprivileged user.
+
+| Tag pattern | Source |
+|---|---|
+| `0.0.1`, `0.0`, `0`, `latest` | tagged release (semver) |
+| `main` | rolling build of the `main` branch |
+| `sha-XXXXXXX` | immutable per-commit |
+
+```sh
+docker pull ghcr.io/fchimpan/release-proxy:latest
+
+docker run --rm -p 8080:8080 \
+  -e RELEASE_PROXY_MINIMUM_RELEASE_AGE=7d \
+  ghcr.io/fchimpan/release-proxy:latest
+```
+
+Mounting a config file (the default path inside the container is `/release-proxy.json`):
+
+```sh
+docker run --rm -p 8080:8080 \
+  -v "$PWD/release-proxy.json:/release-proxy.json:ro" \
+  ghcr.io/fchimpan/release-proxy:latest
+```
+
+`docker-compose.yml`:
+
+```yaml
+services:
+  release-proxy:
+    image: ghcr.io/fchimpan/release-proxy:latest
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./release-proxy.json:/release-proxy.json:ro
+    restart: unless-stopped
+```
+
 ## Quick start
 
 ```sh
