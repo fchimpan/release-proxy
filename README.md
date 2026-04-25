@@ -134,8 +134,8 @@ automatically. Use `RELEASE_PROXY_CONFIG=/path/to/config.json` to point elsewher
 
 ### Duration format
 
-`30m`, `24h`, `7d`, `2w` (single unit only). Compound forms like `1d12h` are not
-supported.
+`30m`, `24h`, `7d`, `2w`, `1y` (single unit only; `1y` = 365 days). Compound forms
+like `1d12h` are not supported.
 
 ## URL format
 
@@ -171,6 +171,32 @@ GOPROXY=http://localhost:8080,https://proxy.golang.org go mod tidy
 
 `GOSUMDB=off` is **not** required. release-proxy returns 404 for `/sumdb/...`, which
 makes `go` talk to `sum.golang.org` directly for checksum verification.
+
+### Persisting the setting
+
+Per-command env vars are fine for one-off runs. To make every `go` command on your
+machine route through release-proxy, write it to your user-wide `go env`:
+
+```sh
+go env -w GOPROXY=http://localhost:8080
+go env -w GOSUMDB=sum.golang.org   # explicit, in case it was disabled previously
+
+go env GOPROXY                     # confirm
+```
+
+Revert when you're done:
+
+```sh
+go env -u GOPROXY
+```
+
+Settings are stored in `$(go env GOENV)` (typically `~/.config/go/env` on Linux/macOS)
+and override the process environment unless `GOPROXY=...` is set explicitly at the
+command line.
+
+For project-scoped configuration, set the variable in your shell rc, `direnv`'s
+`.envrc`, or a `Makefile` target — `go env -w` is global to the user, so it's not
+ideal when different projects need different proxies.
 
 ## Applying urgent security patches
 

@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"os"
 	"os/signal"
 	"strings"
 	"syscall"
@@ -32,6 +33,15 @@ func Run(ctx context.Context, getenv func(string) string, stdout io.Writer) erro
 
 	configPathExplicit := getenv("RELEASE_PROXY_CONFIG")
 	configPath := cmp.Or(configPathExplicit, defaultConfigPath)
+
+	// When the user explicitly sets RELEASE_PROXY_CONFIG, a missing/unreadable
+	// file is a startup error (typo detection). For the implicit default path,
+	// missing-file is fine — the config file is optional.
+	if configPathExplicit != "" {
+		if _, err := os.Stat(configPathExplicit); err != nil {
+			return fmt.Errorf("config file: %w", err)
+		}
+	}
 	fileCfg, configErr := config.Load(configPath)
 
 	logLevel := cmp.Or(getenv("RELEASE_PROXY_LOG_LEVEL"), fileCfg.LogLevel, "info")
@@ -49,11 +59,23 @@ func Run(ctx context.Context, getenv func(string) string, stdout io.Writer) erro
 		exclusions = fileCfg.MinimumReleaseAgeExclude
 	}
 
+	// Cooldown semantics:
+	//   empty value         → not configured (sentinel: -1; prefix-less requests are 400)
+	//   parse error         → startup failure (typo detection, vs. silent fallback to 0)
+	//   "0s" or any valid d → applied as default (0s = explicit no-filter, distinct from unset)
+	defaultCooldown := time.Duration(-1)
+	if ageStr := cmp.Or(getenv("RELEASE_PROXY_MINIMUM_RELEASE_AGE"), fileCfg.MinimumReleaseAge); ageStr != "" {
+		d, err := filter.ParseDuration(ageStr)
+		if err != nil {
+			return fmt.Errorf("invalid RELEASE_PROXY_MINIMUM_RELEASE_AGE %q: %w", ageStr, err)
+		}
+		defaultCooldown = d
+	}
+
 	cfg := proxy.Config{
-		UpstreamURL: cmp.Or(getenv("RELEASE_PROXY_UPSTREAM"), fileCfg.Upstream, "https://proxy.golang.org"),
-		Exclusions:  exclusions,
-		DefaultCooldown: parseDuration(ctx, "RELEASE_PROXY_MINIMUM_RELEASE_AGE",
-			cmp.Or(getenv("RELEASE_PROXY_MINIMUM_RELEASE_AGE"), fileCfg.MinimumReleaseAge), 0, logger),
+		UpstreamURL:     cmp.Or(getenv("RELEASE_PROXY_UPSTREAM"), fileCfg.Upstream, "https://proxy.golang.org"),
+		Exclusions:      exclusions,
+		DefaultCooldown: defaultCooldown,
 		CacheTTL: parseDuration(ctx, "RELEASE_PROXY_CACHE_TTL",
 			cmp.Or(getenv("RELEASE_PROXY_CACHE_TTL"), fileCfg.CacheTTL), time.Hour, logger),
 	}

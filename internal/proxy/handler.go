@@ -15,6 +15,10 @@ import (
 )
 
 // Config holds runtime configuration for the proxy handler.
+//
+// DefaultCooldown uses a negative value (e.g. -1) as a "not configured" sentinel,
+// so that an explicit zero ("0s" → no filtering) is distinguishable from an unset
+// env/config (which makes prefix-less requests an error instead of a silent passthrough).
 type Config struct {
 	UpstreamURL     string
 	Exclusions      []string
@@ -250,12 +254,21 @@ func parsePath(path string, defaultCooldown time.Duration) (cooldown time.Durati
 
 	cooldown, parseErr := filter.ParseDuration(cooldownStr)
 	if parseErr != nil {
-		// no cooldown prefix; treat entire path as module+endpoint
-		if defaultCooldown > 0 {
+		// "-" prefix can only be an attempted (rejected) negative duration —
+		// module paths cannot start with '-' — so flag it even when a default is set,
+		// otherwise the proxy would silently treat "-1d/..." as a module name.
+		if strings.HasPrefix(cooldownStr, "-") {
+			return 0, "", "", fmt.Errorf("invalid cooldown prefix %q: expected single-unit duration like 30m, 24h, 7d, 2w, 1y", cooldownStr)
+		}
+		// Otherwise fall through: with a default, treat the path as module+endpoint;
+		// without one, distinguish "looks like a typo" from "needs configuration".
+		if defaultCooldown >= 0 {
 			cooldown = defaultCooldown
 			rest = path
+		} else if looksLikeDurationAttempt(cooldownStr) {
+			return 0, "", "", fmt.Errorf("invalid cooldown prefix %q: expected single-unit duration like 30m, 24h, 7d, 2w, 1y", cooldownStr)
 		} else {
-			return 0, "", "", fmt.Errorf("invalid cooldown %q and no default configured: %w", cooldownStr, parseErr)
+			return 0, "", "", fmt.Errorf("no cooldown configured: set RELEASE_PROXY_MINIMUM_RELEASE_AGE (e.g. 7d) or include a URL prefix like /7d/<module>/...")
 		}
 	}
 
@@ -275,6 +288,20 @@ func parsePath(path string, defaultCooldown time.Duration) (cooldown time.Durati
 	}
 
 	return cooldown, modulePath, endpoint, nil
+}
+
+// looksLikeDurationAttempt returns true if the path's first segment plausibly
+// looks like the user tried to specify a cooldown (vs. it being a module path).
+// Heuristic: starts with a digit. Used only when no default cooldown is configured,
+// to disambiguate "/7days/..." (typo) from "/github.com/..." (module path).
+// "-" prefix is handled separately by the caller (always rejected).
+//
+// False positives are possible for module paths starting with a digit
+// (e.g. "4d63.com"), but those are caught by the no-default-configured branch
+// only when the user really hasn't set RELEASE_PROXY_MINIMUM_RELEASE_AGE — in
+// which case any prefix-less request fails anyway.
+func looksLikeDurationAttempt(s string) bool {
+	return len(s) > 0 && s[0] >= '0' && s[0] <= '9'
 }
 
 // parseVersionEndpoint extracts the version from a /@v/{version}.{info,mod,zip} endpoint.

@@ -102,10 +102,22 @@ func (f *CooldownFilter) IsWithinCooldown(t time.Time, cooldown time.Duration) b
 	return t.After(cutoff)
 }
 
-// ParseDuration parses a cooldown duration string.
-// Supports: "7d" (days), "24h" (hours), "30m" (minutes), "2w" (weeks).
+// ParseDuration parses a non-negative cooldown duration string.
+// Supports: "30m" (minutes), "24h" (hours), "7d" (days), "2w" (weeks), "1y" (years; 365d).
 // Combined forms like "1d12h" are not supported; use a single unit.
+// Negative durations are rejected — they would silently disable filtering.
 func ParseDuration(s string) (time.Duration, error) {
+	d, err := parseDurationRaw(s)
+	if err != nil {
+		return 0, err
+	}
+	if d < 0 {
+		return 0, fmt.Errorf("negative duration %q not allowed", s)
+	}
+	return d, nil
+}
+
+func parseDurationRaw(s string) (time.Duration, error) {
 	if s == "" {
 		return 0, fmt.Errorf("empty duration string")
 	}
@@ -115,7 +127,7 @@ func ParseDuration(s string) (time.Duration, error) {
 		return d, nil
 	}
 
-	// Handle custom suffixes: d (days), w (weeks)
+	// Handle custom suffixes: d (days), w (weeks), y (years)
 	suffix := s[len(s)-1]
 	numStr := s[:len(s)-1]
 
@@ -129,6 +141,8 @@ func ParseDuration(s string) (time.Duration, error) {
 		return time.Duration(num * float64(24*time.Hour)), nil
 	case 'w':
 		return time.Duration(num * float64(7*24*time.Hour)), nil
+	case 'y':
+		return time.Duration(num * float64(365*24*time.Hour)), nil
 	default:
 		return 0, fmt.Errorf("unsupported duration unit %q in %q", string(suffix), s)
 	}

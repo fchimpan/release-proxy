@@ -96,7 +96,8 @@ func TestParsePath(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cooldown, modulePath, endpoint, err := parsePath(tt.path, 0)
+			// -1 = "no default configured": prefix-less paths are an error.
+			cooldown, modulePath, endpoint, err := parsePath(tt.path, -1)
 			if tt.err {
 				if err == nil {
 					t.Errorf("expected error for path %q", tt.path)
@@ -138,9 +139,33 @@ func TestParsePath_DefaultCooldown(t *testing.T) {
 	}
 
 	// same path without default should error
-	_, _, _, err = parsePath("/golang.org/x/text/@v/list", 0)
+	_, _, _, err = parsePath("/golang.org/x/text/@v/list", -1)
 	if err == nil {
 		t.Error("expected error when no cooldown prefix and no default")
+	}
+
+	// explicit 0 default: prefix-less requests pass with no filtering (distinct from "unset").
+	cooldown0, _, _, err := parsePath("/golang.org/x/text/@v/list", 0)
+	if err != nil {
+		t.Fatalf("unexpected error with explicit 0 default: %v", err)
+	}
+	if cooldown0 != 0 {
+		t.Errorf("cooldown = %v, want 0 (explicit no-filter)", cooldown0)
+	}
+}
+
+func TestParsePath_NegativePrefix(t *testing.T) {
+	// "-" prefix must always be rejected, even when a default cooldown is set —
+	// otherwise the proxy would silently treat "-1d/..." as a module name.
+	for _, defaultCooldown := range []time.Duration{-1, 0, 7 * 24 * time.Hour} {
+		_, _, _, err := parsePath("/-7d/example.com/mod/@v/list", defaultCooldown)
+		if err == nil {
+			t.Errorf("expected error for negative cooldown prefix (default=%v)", defaultCooldown)
+			continue
+		}
+		if !strings.Contains(err.Error(), "invalid cooldown prefix") {
+			t.Errorf("default=%v: error = %q, want 'invalid cooldown prefix'", defaultCooldown, err.Error())
+		}
 	}
 }
 

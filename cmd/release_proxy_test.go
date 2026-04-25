@@ -5,6 +5,7 @@ import (
 	"io"
 	"log/slog"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -100,6 +101,51 @@ func TestRun_ListenError(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("Run() did not return within timeout")
+	}
+}
+
+func TestRun_InvalidMinimumReleaseAge(t *testing.T) {
+	getenv := stubEnv(map[string]string{
+		"RELEASE_PROXY_MINIMUM_RELEASE_AGE": "garbage",
+		"RELEASE_PROXY_PORT":                "0",
+		"RELEASE_PROXY_LOG_LEVEL":           "error",
+	})
+
+	err := Run(context.Background(), getenv, io.Discard)
+	if err == nil {
+		t.Fatal("expected startup error for invalid duration, got nil")
+	}
+	if !strings.Contains(err.Error(), "invalid RELEASE_PROXY_MINIMUM_RELEASE_AGE") {
+		t.Errorf("error = %q, want it to mention RELEASE_PROXY_MINIMUM_RELEASE_AGE", err.Error())
+	}
+}
+
+func TestRun_NegativeMinimumReleaseAge(t *testing.T) {
+	getenv := stubEnv(map[string]string{
+		"RELEASE_PROXY_MINIMUM_RELEASE_AGE": "-7d",
+		"RELEASE_PROXY_PORT":                "0",
+		"RELEASE_PROXY_LOG_LEVEL":           "error",
+	})
+
+	err := Run(context.Background(), getenv, io.Discard)
+	if err == nil {
+		t.Fatal("expected startup error for negative duration, got nil")
+	}
+}
+
+func TestRun_ExplicitConfigMissing(t *testing.T) {
+	getenv := stubEnv(map[string]string{
+		"RELEASE_PROXY_CONFIG":    "/nonexistent/release-proxy.json",
+		"RELEASE_PROXY_PORT":      "0",
+		"RELEASE_PROXY_LOG_LEVEL": "error",
+	})
+
+	err := Run(context.Background(), getenv, io.Discard)
+	if err == nil {
+		t.Fatal("expected startup error for missing explicit config path, got nil")
+	}
+	if !strings.Contains(err.Error(), "config file") {
+		t.Errorf("error = %q, want it to mention 'config file'", err.Error())
 	}
 }
 

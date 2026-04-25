@@ -20,9 +20,16 @@ func TestParseDuration(t *testing.T) {
 		{"24h", 24 * time.Hour, false},
 		{"30m", 30 * time.Minute, false},
 		{"1h30m", 90 * time.Minute, false},
+		{"1y", 365 * 24 * time.Hour, false},
+		{"10y", 3650 * 24 * time.Hour, false},
+		{"0s", 0, false},
 		{"", 0, true},
 		{"bad", 0, true},
 		{"7x", 0, true},
+		{"-1d", 0, true},
+		{"-7d", 0, true},
+		{"-30m", 0, true},
+		{"-1h", 0, true},
 	}
 
 	for _, tt := range tests {
