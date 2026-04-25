@@ -94,7 +94,7 @@ func (c *Client) FetchList(ctx context.Context, module string) ([]string, error)
 	if err != nil {
 		return nil, fmt.Errorf("fetch list for %s: %w", module, err)
 	}
-	defer body.Close()
+	defer func() { _ = body.Close() }()
 
 	data, err := io.ReadAll(body)
 	if err != nil {
@@ -166,7 +166,7 @@ func (c *Client) fetchInfoJSON(ctx context.Context, url string) (*InfoResponse, 
 	if err != nil {
 		return nil, err
 	}
-	defer body.Close()
+	defer func() { _ = body.Close() }()
 
 	var info InfoResponse
 	if err := json.NewDecoder(body).Decode(&info); err != nil {
@@ -187,7 +187,7 @@ func (c *Client) get(ctx context.Context, url string) (io.ReadCloser, error) {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return nil, &HTTPError{StatusCode: resp.StatusCode, URL: url}
 	}
 

@@ -57,7 +57,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if r.URL.Path == "/healthz" {
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprint(w, "ok")
+		_, _ = fmt.Fprint(w, "ok")
 		return
 	}
 
@@ -103,10 +103,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	switch {
-	case endpoint == "/@v/list":
+	switch endpoint {
+	case "/@v/list":
 		h.handleList(ctx, rw, modulePath, cooldown)
-	case endpoint == "/@latest":
+	case "/@latest":
 		h.handleLatest(ctx, rw, modulePath, cooldown)
 	default:
 		if version, ok := parseVersionEndpoint(endpoint); ok {
@@ -148,7 +148,7 @@ func (h *Handler) handleList(ctx context.Context, w http.ResponseWriter, module 
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	for _, v := range filtered {
-		fmt.Fprintln(w, v)
+		_, _ = fmt.Fprintln(w, v)
 	}
 }
 
